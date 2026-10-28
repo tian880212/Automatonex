@@ -17,7 +17,9 @@
 1. 解压后的目录名必须是 **`Automatonex`**（与 `Automatonex.toc` 同级），不要带 `-main` 之类后缀
 2. 整个目录放进 `Interface\AddOns\`
 3. **需要同时安装公共库 `!Libs`**（提供 Ace2、AbacusLib、GratuityLib、SpecialEventsEmbed）
-   —— 本仓库**不含**这些库，缺了会在登录时大量报错且界面打不开
+   —— 本仓库**不含**这些库，缺了会在登录时大量报错且界面打不开。
+   配套打包好的版本：[tian880212/Libs](https://github.com/tian880212/Libs)
+   （解压后目录名必须带感叹号：`!Libs`）
 4. 进游戏输入 `/auto`
 
 ## 常用命令
