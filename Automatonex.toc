@@ -74,6 +74,7 @@ Modules\WorldBuffs.lua
 Modules\RangeController.lua
 Modules\CDSafe.lua
 Modules\ShaguStance.lua
+Modules\AutoCmd.lua
 
 Plubics\CleanChat\CleanChat.xml
 
