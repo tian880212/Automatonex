@@ -436,40 +436,81 @@ function Automaton_AlertCombat:CheckAggro()
     local foundHostile = false
     local foundFriendly = false
 
-    local f = EnumerateFrames()
-    while f do
-        if f.IsVisible and f:IsVisible() then
-            local unitToken = f.GetName and f:GetName(1)
-            if unitToken then
-                -- 安全检测单位是否存在
-                local ok, exists = pcall(UnitExists, unitToken)
-                if ok and exists then
-                    -- 阵营判定：友方(UnitIsFriend)优先，绝不进 OT 分支
-                    -- 注意：pcall 返回 (success, value1, ...)，第二个返回值才是 API 的真正结果
-                    local okf, isFriend = pcall(UnitIsFriend, "player", unitToken)
-                    local okc, canAttack = pcall(UnitCanAttack, "player", unitToken)
-                    local targetUnit = unitToken .. "target"
-                    local ok2, targetExists = pcall(UnitExists, targetUnit)
-                    if ok2 and targetExists then
-                        local targetName = UnitName(targetUnit)
-                        if targetName == playerName then
-                            if okf and isFriend then
-                                -- 友方单位（玩家/NPC/宠物）目标是你 → 偷瞄提醒，绝不显示 OT
-                                if unitToken ~= "player" then
-                                    friendlyName = UnitName(unitToken) or "某人"
-                                    foundFriendly = true
-                                end
-                            elseif okc and canAttack then
-                                -- 敌对/可攻击单位（怪物）目标是你 → OT 警告
-                                mobName = UnitName(unitToken) or "未知目标"
+    -- ========== 仇恨检测（OT 判定）==========
+    -- PERF 优化：原实现用 EnumerateFrames() 遍历客户端全部 UI 帧（上千个），对每个可见帧
+    -- 做多次 pcall(UnitExists/UnitIsFriend/UnitCanAttack)+GetName(1)，静止状态下每 0.5s 一次，
+    -- 造成周期性帧时间尖峰（low 帧抖动）。现改为：
+    --   1) 优先遍历 pfUI 名字板（pfNamePlate1..N，仅 20~40 个，均为附近敌对单位），
+    --      用 Nampower GetUnitField(guid,"target") 直接读怪物目标 GUID，比对玩家 GUID；
+    --   2) 无 pfUI/Nampower 时回退到原来的 EnumerateFrames 全帧遍历。
+    local playerGUID = GetUnitGUID and GetUnitGUID("player")
+    local NULL_GUID = "0x0000000000000000"
+    local hasPlate = type(_G["pfNamePlate1"]) == "table"
+
+    if hasPlate and GetUnitField and playerGUID then
+        local index = 1
+        while _G["pfNamePlate" .. index] do
+            local plate = _G["pfNamePlate" .. index]
+            index = index + 1
+            -- pfUI 名字板：pfNamePlateN 是 overlay Button，真正持有单位 GUID 的是 plate.parent
+            local parent = plate.parent
+            if parent and parent:IsShown() and parent:IsVisible() then
+                local guid = parent:GetName(1)
+                if guid and guid ~= playerGUID and guid ~= NULL_GUID then
+                    -- 怪物当前目标 GUID（Nampower GetUnitField）；guid 失效时返回 nil/空 GUID，等价于"单位不存在"
+                    local mobTarget = GetUnitField(guid, "target")
+                    if mobTarget and mobTarget ~= NULL_GUID and mobTarget == playerGUID then
+                        -- 判断阵营：UnitReaction 返回 1-8，1-3=敌对(可攻击)、4=中立、5-8=友善
+                        local reaction = UnitReaction(guid, "player")
+                        if reaction and reaction <= 4 then
+                            -- 敌对/中立（可攻击）目标是你 → OT 警告
+                            if not foundHostile then
+                                mobName = UnitName(guid) or "未知目标"
                                 foundHostile = true
+                            end
+                        elseif reaction then
+                            -- 友善单位（玩家/NPC/宠物）目标是你 → 偷瞄提醒，绝不显示 OT
+                            if not foundFriendly then
+                                friendlyName = UnitName(guid) or "某人"
+                                foundFriendly = true
                             end
                         end
                     end
                 end
             end
         end
-        f = EnumerateFrames(f)
+    else
+        -- 回退：无 pfUI 名字板 / 无 Nampower GetUnitField 时，退回全帧遍历（原逻辑）
+        local f = EnumerateFrames()
+        while f do
+            if f.IsVisible and f:IsVisible() then
+                local unitToken = f.GetName and f:GetName(1)
+                if unitToken then
+                    local ok, exists = pcall(UnitExists, unitToken)
+                    if ok and exists then
+                        local okf, isFriend = pcall(UnitIsFriend, "player", unitToken)
+                        local okc, canAttack = pcall(UnitCanAttack, "player", unitToken)
+                        local targetUnit = unitToken .. "target"
+                        local ok2, targetExists = pcall(UnitExists, targetUnit)
+                        if ok2 and targetExists then
+                            local targetName = UnitName(targetUnit)
+                            if targetName == playerName then
+                                if okf and isFriend then
+                                    if unitToken ~= "player" then
+                                        friendlyName = UnitName(unitToken) or "某人"
+                                        foundFriendly = true
+                                    end
+                                elseif okc and canAttack then
+                                    mobName = UnitName(unitToken) or "未知目标"
+                                    foundHostile = true
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+            f = EnumerateFrames(f)
+        end
     end
 
     -- 友方玩家盯梢补充扫描：

@@ -850,9 +850,9 @@ function Automaton_Tooltip:FormatItemTooltip(tooltip)
 
     local showing = false
 
-    --显示物品ID
+    --显示物品ID（单行左对齐，参考 pfUI；颜色保持默认白色不修改）
     if self.db.profile.showitemid then
-        tooltip:AddDoubleLine("物品ID：", itemId)
+        tooltip:AddLine("物品ID: " .. itemId)
         showing = true
     end
 
